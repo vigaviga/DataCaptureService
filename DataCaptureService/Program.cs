@@ -21,7 +21,7 @@ class Program
         Iteration += 1;
 
         Console.WriteLine("Inside " + Iteration + " iteration.");
-        
+
         return jpgImages;
     }
 
@@ -29,7 +29,11 @@ class Program
     {
         string topic = Configuration.GetValue<string>("topicName");
         IEnumerable<KeyValuePair<string, string>> kvps = Configuration.GetSection("kafka").GetChildren().ToDictionary(x => x.Key, x => x.Value);
-        using (var producer = new ProducerBuilder<string, byte[]>(kvps.AsEnumerable()).Build())
+
+        //var producer = new ProducerBuilder<string, KafkaMessageModel>(kvps.AsEnumerable());
+        //producer1.SetValueSerializer(new KafkaMessageModelSerializer());
+
+        using (var producer = new ProducerBuilder<string, KafkaMessageModel>(kvps.AsEnumerable()).SetValueSerializer(new KafkaMessageModelSerializer()).Build())
         {
             var numberOfMessages = 0;
             while (true)
@@ -43,18 +47,36 @@ class Program
                         ProcessedImages[image.Name] = true;
                         byte[] imageData = File.ReadAllBytes(image.FullName);
 
-                        producer.Produce(topic, new Message<string, byte[]> { Key = image.Name, Value = imageData },
-                            (deliveryReport) =>
+                        ArraySegment<byte>[] chunks = imageData.SplitIntoChunks(307000);
+                        KafkaMessageModel[] messages = chunks.ConvertToMessageChunks();
+
+                        producer.InitTransactions(new TimeSpan(0,0,5));
+                        try
+                        {
+                            producer.BeginTransaction();
+                            for (int i = 0; i < messages.Length; i++)
                             {
-                                if (deliveryReport.Error.Code != ErrorCode.NoError)
-                                {
-                                    Console.WriteLine($"Failed to deliver message: {deliveryReport.Error.Reason}");
-                                }
-                                else
-                                {
-                                    Console.WriteLine($"Produced event to topic {topic}: key = {image.Name} and byte array length is {imageData.Length}.");
-                                }
-                            });
+                                producer.Produce(topic, new Message<string, KafkaMessageModel> { Key = image.Name, Value = messages[i] },
+                                    (deliveryReport) =>
+                                    {
+                                        if (deliveryReport.Error.Code != ErrorCode.NoError)
+                                        {
+                                            Console.WriteLine($"Failed to deliver message: {deliveryReport.Error.Reason}");
+                                        }
+                                        else
+                                        {
+                                            Console.WriteLine($"Produced event to topic {topic}: key = {image.Name} and byte array length is {imageData.Length}.");
+                                        }
+                                    });
+                            }
+                            producer.CommitTransaction();
+                            Console.WriteLine("Transaction got commited."); 
+                        }
+                        catch(ProduceException<string, string> e)
+                        {
+                            producer.AbortTransaction();
+                            Console.WriteLine($"Error sending message: {e.Message}");
+                        }
 
                         producer.Flush();
 
