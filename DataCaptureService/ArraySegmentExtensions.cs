@@ -14,7 +14,7 @@
                     Sequence = sequence,
                     Position = i + 1,
                     IsLastMessage = i == chunksCount - 1,
-                    Message = chunks[i].ToArray(),
+                    ImageData = chunks[i].ToArray(),
                     ChunksCount = chunksCount
                 };
             }

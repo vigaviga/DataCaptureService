@@ -29,11 +29,10 @@ class Program
     {
         string topic = Configuration.GetValue<string>("topicName");
         IEnumerable<KeyValuePair<string, string>> kvps = Configuration.GetSection("kafka").GetChildren().ToDictionary(x => x.Key, x => x.Value);
-
-        using (var producer = new ProducerBuilder<string, KafkaMessageModel>(kvps.AsEnumerable()).SetValueSerializer(new KafkaMessageModelSerializer()).Build())
+        var numberOfMessages = 0;
+        while (true)
         {
-            var numberOfMessages = 0;
-            while (true)
+            using (var producer = new ProducerBuilder<string, KafkaMessageModel>(kvps.AsEnumerable()).SetValueSerializer(new KafkaMessageModelSerializer()).Build())
             {
                 var path = Configuration.GetValue<string>("pathToCapture");
                 var allJpgImages = GetAllImagesInfo(path);
@@ -49,7 +48,7 @@ class Program
                         ArraySegment<byte>[] chunks = imageData.SplitIntoChunks(307000);
                         KafkaMessageModel[] messages = chunks.ConvertToMessageChunks();
 
-                        producer.InitTransactions(new TimeSpan(0,0,5));
+                        producer.InitTransactions(new TimeSpan(1, 0, 0));
                         try
                         {
                             producer.BeginTransaction();
@@ -69,9 +68,9 @@ class Program
                                     });
                             }
                             producer.CommitTransaction();
-                            Console.WriteLine("Transaction got commited."); 
+                            Console.WriteLine("Transaction got commited.");
                         }
-                        catch(ProduceException<string, string> e)
+                        catch (ProduceException<string, string> e)
                         {
                             producer.AbortTransaction();
                             Console.WriteLine($"Error sending message: {e.Message}");
@@ -81,8 +80,8 @@ class Program
 
                     }
                 }
-                await Task.Delay(2000);
             }
+            await Task.Delay(2000);
         }
     }
 
