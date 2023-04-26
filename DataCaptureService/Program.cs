@@ -30,9 +30,6 @@ class Program
         string topic = Configuration.GetValue<string>("topicName");
         IEnumerable<KeyValuePair<string, string>> kvps = Configuration.GetSection("kafka").GetChildren().ToDictionary(x => x.Key, x => x.Value);
 
-        //var producer = new ProducerBuilder<string, KafkaMessageModel>(kvps.AsEnumerable());
-        //producer1.SetValueSerializer(new KafkaMessageModelSerializer());
-
         using (var producer = new ProducerBuilder<string, KafkaMessageModel>(kvps.AsEnumerable()).SetValueSerializer(new KafkaMessageModelSerializer()).Build())
         {
             var numberOfMessages = 0;
@@ -45,7 +42,9 @@ class Program
                     if (!ProcessedImages.ContainsKey(image.Name))
                     {
                         ProcessedImages[image.Name] = true;
+
                         byte[] imageData = File.ReadAllBytes(image.FullName);
+                        var chunkSize = Configuration.GetValue<int>("chunkSize");
 
                         ArraySegment<byte>[] chunks = imageData.SplitIntoChunks(307000);
                         KafkaMessageModel[] messages = chunks.ConvertToMessageChunks();
